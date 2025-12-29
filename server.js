@@ -1,76 +1,70 @@
-import express from 'express';
-import OpenAI from 'openai';
-import dotenv from 'dotenv';
-import cors from 'cors';
-import fs from 'fs'; // Dosya sistemini ekledik
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
+const fs = require('fs');
+require('dotenv').config();
 
-dotenv.config();
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const app = express();
-// Render için port ayarı: process.env.PORT || 3000
-const port = process.env.PORT || 3000;
-
 app.use(cors());
 app.use(express.json());
 
-// --- VERİ GÜNLÜĞÜ (LOGGING) FONKSİYONU ---
-const saveLog = (logData) => {
-    const logEntry = {
-        timestamp: new Date().toISOString(),
-        ...logData
-    };
-    // Dosyaya ekleme yap (JSON dizisi olarak tutmak için basit bir ekleme)
-    fs.appendFileSync('ogrenci_loglari.json', JSON.stringify(logEntry) + "\n");
-};
+const PORT = process.env.PORT || 10000;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const systemPrompt = `
-SENİN ROLÜN:
-11. Sınıf Matematik Öğretmenisin. Pedagojik kurallara (Scaffolding) uygun davran.
-Öğrenciye doğrudan "şunu çiz" demek yerine yönlendirici sorular sor.
-
-MÜFREDAT ODAĞI (11.3.3):
-- Öteleme, Simetri ve Ölçekleme konularında uzmanlaşmış bir rehbersin.
-- Öğrenci bir hata yaparsa (örneğin sağa öteleme için f(x+a) yazarsa), onu "Neden eksi yerine artı kullandın? Zaman rötarı grafiği nereye iter?" gibi sorularla düşündür.
-
-JSON ÇIKTI ŞABLONU:
-{
-  "type": "ggb_command" veya "chat",
-  "payload": "komut veya mesaj",
-  "message": "öğrenciye yönlendirici geri bildirim"
+// LOG DOSYASI HAZIRLIĞI
+const LOG_FILE = 'ogrenci_loglari.json';
+if (!fs.existsSync(LOG_FILE)) {
+    fs.writeFileSync(LOG_FILE, JSON.stringify([]));
 }
-`;
 
 app.post('/api/chat', async (req, res) => {
+    const { userMessage, studentId } = req.body;
+
     try {
-        const { userMessage, studentId } = req.body; // studentId eklenebilir
+        const response = await axios.post(
+            'https://api.openai.com/v1/chat/completions',
+            {
+                model: "gpt-3.5-turbo",
+                messages: [
+                    {
+                        role: "system",
+                        content: `Sen bir matematik öğretmenisin. Görevin öğrencilere fonksiyon dönüşümlerini öğretmektir.
+                        KURAL 1: Grafik çizmek için ASLA 'Plot', 'Draw', 'Çiz' gibi kelimeler içeren komutlar üretme.
+                        KURAL 2: GeoGebra komutu olarak SADECE fonksiyonun kendisini gönder. Örnek: f(x)=x^2
+                        KURAL 3: Eğer öğrenci bir dönüşüm isterse (örn: 2 birim yukarı kaydır), yeni fonksiyonu tanımla. Örnek: g(x)=f(x)+2
+                        KURAL 4: Yanıtını JSON formatında şu yapıda ver: {"message": "Açıklama metni", "type": "ggb_command", "payload": "f(x)=x^2"}`
+                    },
+                    { role: "user", content: userMessage }
+                ],
+                temperature: 0.5
+            },
+            { headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` } }
+        );
 
-        const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userMessage }
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.4,
-        });
+        const aiResponse = JSON.parse(response.data.choices[0].message.content);
 
-        const aiResponse = JSON.parse(completion.choices[0].message.content);
+        // VERİ KAYDI (DENEY ANALİZİ İÇİN)
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            studentId,
+            userMessage,
+            aiMessage: aiResponse.message,
+            ggbCommand: aiResponse.payload
+        };
 
-        // --- VERİYİ KAYDET (Analiz İçin) ---
-        saveLog({
-            student: studentId || "isimsiz_ogrenci",
-            input: userMessage,
-            output: aiResponse
-        });
+        const logs = JSON.parse(fs.readFileSync(LOG_FILE));
+        logs.push(logEntry);
+        fs.writeFileSync(LOG_FILE, JSON.stringify(logs, null, 2));
 
+        console.log(`Log Kaydedildi: ${studentId} -> ${userMessage}`);
         res.json(aiResponse);
+
     } catch (error) {
-        console.error('Hata:', error);
-        res.status(500).json({ type: 'error', payload: 'Sunucu hatası.' });
+        console.error("Hata oluştu:", error.response ? error.response.data : error.message);
+        res.status(500).json({ error: "Bir hata oluştu." });
     }
 });
 
-app.listen(port, () => {
-    console.log(`🚀 Sunucu ${port} portunda yayında.`);
+app.listen(PORT, () => {
+    console.log(`Sunucu ${PORT} portunda çalışıyor...`);
 });
