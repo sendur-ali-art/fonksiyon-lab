@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matematik Fonksiyon Laboratuvarı - Canlı</title>
+  <script src="https://www.geogebra.org/apps/deployggb.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 0; overflow: hidden; }
+    #container { display: flex; height: 100vh; }
+    #ggb-element { flex: 3; border-right: 2px solid #ddd; background: #fff; }
+    #chat { flex: 1; display: flex; flex-direction: column; background: white; padding: 15px; min-width: 350px; box-shadow: -2px 0 5px rgba(0,0,0,0.1); }
+    #messages { flex: 1; overflow-y: auto; border: 1px solid #eee; margin-bottom: 15px; padding: 10px; border-radius: 8px; background: #fafafa; }
+    .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 15px; line-height: 1.4; font-size: 0.95rem; max-width: 85%; }
+    .user-msg { background: #0078ff; color: white; align-self: flex-end; margin-left: auto; border-bottom-right-radius: 2px; }
+    .bot-msg { background: #e4e6eb; color: #050505; align-self: flex-start; border-bottom-left-radius: 2px; }
+    .error-msg { background: #ffebee; color: #c62828; font-size: 0.8rem; text-align: center; margin: 5px 0; }
+    #input-area { display: flex; gap: 8px; padding-top: 10px; }
+    input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 25px; outline: none; font-size: 1rem; }
+    button { padding: 10px 20px; background: #4caf50; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; transition: background 0.3s; }
+    button:hover { background: #45a049; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<div id="container">
+  <div id="ggb-element"></div>
+
+  <div id="chat">
+    <h3 style="margin-top:0; color:#1b5e20; display: flex; align-items: center; gap: 8px;">
+        🤖 Matematik Asistanı <small style="font-size: 0.6rem; color: #666;">v3.0 Canlı</small>
+    </h3>
+    <div id="messages" style="display: flex; flex-direction: column;">
+      <div class="msg bot-msg">Merhaba! Ben matematik öğretmeninim. Fonksiyonları birlikte keşfedelim. Örneğin: <b>"f(x)=x^2 grafiğini çiz"</b> diyebilirsin.</div>
+    </div>
+    <div id="input-area">
+      <input type="text" id="userInput" placeholder="Sorunuzu buraya yazın..." onkeypress="if(event.key==='Enter') sendMessage()">
+      <button onclick="sendMessage()" id="sendBtn">Gönder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+    // 1. GeoGebra Uygulamasını Başlat
+    var params = {
+        "appName": "graphing",
+        "width": 800,
+        "height": 600,
+        "showToolBar": false,
+        "showAlgebraInput": true,
+        "showMenuBar": false,
+        "enableShiftDragZoom": true,
+        "language": "tr"
+    };
+    var ggbApp = new GGBApplet(params, true);
+    window.addEventListener("load", function() {
+        ggbApp.inject('ggb-element');
+    });
+
+    // 2. Mesaj Gönderimi ve Sunucu Bağlantısı
+    async function sendMessage() {
+        const input = document.getElementById("userInput");
+        const btn = document.getElementById("sendBtn");
+        const text = input.value.trim();
+        
+        if (!text) return;
+
+        // Kullanıcı mesajını ekrana yaz
+        addMessage("Siz", text, "user-msg");
+        input.value = "";
+        input.disabled = true;
+        btn.disabled = true;
+
+        try {
+            // RENDER ADRESİNİZ
+            const renderURL = "https://fonksiyon-lab.onrender.com"; 
+            
+            const response = await fetch(`${renderURL}/api/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    userMessage: text, 
+                    studentId: "deney_grubu_1" 
+                }),
+            });
+
+            if (!response.ok) throw new Error('Sunucu yanıt vermedi');
+            
+            const data = await response.json();
+            handleAiResponse(data);
+
+        } catch (error) {
+            addMessage("Sistem", "Bağlantı hatası! Sunucu uyanıyor olabilir (30-40 sn sürebilir), lütfen bekleyin.", "error-msg");
+            console.error("Hata detayı:", error);
+        } finally {
+            input.disabled = false;
+            btn.disabled = false;
+            input.focus();
+        }
+    }
+
+    // 3. AI Yanıtını İşle (Mesaj + GeoGebra Komutu)
+    function handleAiResponse(data) {
+        const ggb = window.ggbApplet;
+        
+        // Bot mesajını göster
+        if (data.message) {
+            addMessage("Öğretmen", data.message, "bot-msg");
+        } else if (data.payload && data.type === 'chat') {
+            addMessage("Öğretmen", data.payload, "bot-msg");
+        }
+
+        // GeoGebra komutunu çalıştır
+        if (data.type === 'ggb_command' && data.payload) {
+            try {
+                const commands = data.payload.split(';');
+                commands.forEach(cmd => {
+                    const c = cmd.trim();
+                    if(c) ggb.evalCommand(c);
+                });
+            } catch (e) {
+                console.error("GeoGebra Komut Hatası:", e);
+            }
+        }
+    }
+
+    // 4. Ekrana Mesaj Baloncuğu Ekleme
+    function addMessage(sender, text, className) {
+        const box = document.getElementById("messages");
+        const div = document.createElement("div");
+        div.className = "msg " + className;
+        div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+        box.appendChild(div);
+        
+        // Otomatik aşağı kaydır
+        box.scrollTop = box.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
