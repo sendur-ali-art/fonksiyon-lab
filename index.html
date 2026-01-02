@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fonksiyon Dönüşümleri Laboratuvarı</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; background-color: #f0f2f5; overflow: hidden; }
+        
+        /* SOL PANEL */
+        #chat-panel { width: 350px; background: white; display: flex; flex-direction: column; border-right: 1px solid #ccc; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 20; }
+        
+        /* HEADER - BUTONLAR BURADA (Görünürlük için z-index artırıldı) */
+        #chat-header { 
+            background: #2c3e50; color: white; padding: 15px; 
+            text-align: center; font-weight: bold; font-size: 1em; 
+            display: flex; flex-direction: column; gap: 10px;
+            z-index: 30; /* Butonların en üstte kalmasını sağlar */
+        }
+        
+        #button-group { 
+            display: flex; 
+            justify-content: center; 
+            gap: 5px; 
+            flex-wrap: wrap; /* Ekran daralırsa alt satıra geçsin */
+        }
+
+        /* BUTON TASARIMLARI */
+        .header-btn {
+            border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; 
+            font-size: 0.8em; color: white; transition: opacity 0.3s; font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* Belirginlik için gölge */
+        }
+        .btn-photo { background-color: #3498db; }     /* Mavi (Fotoğraf) */
+        .btn-clear { background-color: #95a5a6; }     /* Gri (Temizle) */
+        .btn-save { background-color: #e67e22; }      /* Turuncu (Kaydet) */
+        
+        .header-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .header-btn:active { transform: translateY(1px); }
+
+        /* SOHBET ALANI */
+        #chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #f9f9f9; display: flex; flex-direction: column; gap: 10px; }
+        #input-area { padding: 15px; border-top: 1px solid #ddd; display: flex; gap: 10px; background: white; }
+        
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
+        button#send-btn { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+
+        /* MESAJ STİLLERİ */
+        .message-wrapper { display: flex; flex-direction: column; max-width: 85%; }
+        .message-wrapper.user { align-self: flex-end; align-items: flex-end; }
+        .message-wrapper.ai { align-self: flex-start; align-items: flex-start; }
+        .sender-name { font-size: 0.75em; color: #666; margin-bottom: 3px; font-weight: bold; }
+        .message { padding: 10px 15px; border-radius: 15px; font-size: 0.95em; line-height: 1.4; word-wrap: break-word; }
+        .user-message { background: #3498db; color: white; border-bottom-right-radius: 2px; }
+        .ai-message { background: #eecda3; color: #333; border-bottom-left-radius: 2px; border: 1px solid #ddd; }
+        .system-message { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; align-self: center; width: 90%; text-align: center; font-weight: bold; padding: 10px; border-radius: 10px; margin: auto; }
+        .error-message { background: #ffdddd; color: #d8000c; border: 1px solid #d8000c; width: 90%; text-align: center; font-weight: bold; padding: 10px; border-radius: 10px; margin: auto; }
+
+        /* SAĞ PANEL */
+        #ggb-container { flex: 1; height: 100vh; position: relative; z-index: 1; }
+    </style>
+    <script src="https://cdn.geogebra.org/apps/deployggb.js"></script>
+</head>
+<body>
+
+    <div id="chat-panel">
+        <div id="chat-header">
+            <div>Fonksiyon Lab</div>
+            <div id="button-group">
+                <button onclick="takeScreenshot()" class="header-btn btn-photo" title="Grafiği indir">📷 Fotoğraf</button>
+                <button onclick="clearGeoGebra()" class="header-btn btn-clear" title="Ekranı Temizle">🧹 Temizle</button>
+                <button onclick="downloadChat()" class="header-btn btn-save" title="Sohbeti indir">💾 Kaydet</button>
+            </div>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="input-area">
+            <input type="text" id="user-input" placeholder="Sistem başlatılıyor..." disabled onkeypress="handleKeyPress(event)">
+            <button id="send-btn" disabled onclick="sendMessage()">Gönder</button>
+        </div>
+    </div>
+
+    <div id="ggb-container"></div>
+
+    <script>
+        // --- 1. GEOGEBRA AYARLARI ---
+        var ggbApp = new GGBApplet({
+            "appName": "graphing",
+            "width": window.innerWidth - 350, 
+            "height": window.innerHeight,     
+            "showToolBar": false, "showAlgebraInput": false, "showMenuBar": false, "showResetIcon": true,
+            "language": "tr", "showGrid": true, "showAxes": true,
+            "appletOnLoad": function(api) {
+                api.setGridVisible(true);
+                api.setAxesVisible(true, true);
+                window.ggbAPI = api;
+            }
+        }, true);
+
+        // --- 2. DEĞİŞKENLER ---
+        let chatHistory = [];
+        let studentName = "";
+        let isNameSet = false;
+
+        window.onload = function() {
+            ggbApp.inject('ggb-container');
+            startUpSequence();
+        };
+
+        function startUpSequence() {
+            const messagesDiv = document.getElementById('chat-messages');
+            const inputField = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            
+            const loadingMsg = document.createElement('div');
+            loadingMsg.className = 'system-message';
+            loadingMsg.textContent = "⏳ Sunucu uyanıyor...";
+            loadingMsg.id = "startup-loader";
+            messagesDiv.appendChild(loadingMsg);
+
+            setTimeout(() => {
+                const loader = document.getElementById('startup-loader');
+                if (loader) loader.remove();
+                addMessage("Merhaba! Ben Öğretmen Yardımcınım. İsmin nedir?", "ai");
+                inputField.disabled = false;
+                inputField.placeholder = "Buraya yazın...";
+                sendBtn.disabled = false;
+                inputField.focus();
+            }, 2000);
+        }
+
+        async function sendMessage() {
+            const inputField = document.getElementById('user-input');
+            const message = inputField.value.trim();
+            const sendBtn = document.getElementById('send-btn');
+
+            if (!message) return;
+
+            if (!isNameSet) {
+                studentName = message;
+                isNameSet = true;
+            }
+
+            addMessage(message, 'user');
+            inputField.value = '';
+            sendBtn.disabled = true;
+
+            // ZAMAN DAMGASI EKLİYORUZ
+            chatHistory.push({ role: "user", content: message, timestamp: new Date() });
+
+            try {
+                // OpenAI'a istek
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, history: chatHistory.map(h => ({role: h.role, content: h.content})) })
+                });
+
+                if (!response.ok) throw new Error('Sunucu hatası');
+                const data = await response.json();
+
+                if (data.message) {
+                    addMessage(data.message, 'ai');
+                    chatHistory.push({ role: "assistant", content: JSON.stringify(data), timestamp: new Date() });
+                }
+
+                if (data.commands && Array.isArray(data.commands)) {
+                    processCommands(data.commands);
+                }
+
+            } catch (error) {
+                console.error("Hata:", error);
+                addMessage("⚠️ HATA: Sunucu yanıt vermedi.", 'error');
+            } finally {
+                sendBtn.disabled = false;
+                inputField.focus();
+            }
+        }
+
+        function processCommands(commands) {
+            if (!window.ggbAPI) return;
+            commands.forEach(cmd => {
+                try {
+                    if (cmd === "CLEAR_SCREEN") {
+                        clearGeoGebra();
+                    } else if (cmd === "SCREENSHOT") {
+                        takeScreenshot();
+                    } else {
+                        window.ggbAPI.evalCommand(cmd);
+                    }
+                } catch (e) { console.warn("Komut Hatası:", cmd); }
+            });
+        }
+
+        // --- MANUEL TEMİZLEME FONKSİYONU ---
+        function clearGeoGebra() {
+            if(window.ggbAPI) {
+                window.ggbAPI.reset();
+                window.ggbAPI.setGridVisible(true);
+                window.ggbAPI.setAxesVisible(true, true);
+            }
+        }
+
+        // --- FOTOĞRAF ÇEKME (İsim_Tarih_Saat.png) ---
+        function takeScreenshot() {
+            if (!window.ggbAPI) { 
+                alert("GeoGebra henüz yüklenmedi, lütfen bekleyin."); 
+                return; 
+            }
+            
+            // Kullanıcıya geri bildirim ver
+            // alert("Ekran görüntüsü hazırlanıyor...");
+
+            window.ggbAPI.getPNGBase64(1, (base64) => {
+                const now = new Date();
+                
+                const dateStr = now.getFullYear() + "-" + 
+                              String(now.getMonth() + 1).padStart(2, '0') + "-" + 
+                              String(now.getDate()).padStart(2, '0');
+                
+                const timeStr = String(now.getHours()).padStart(2, '0') + "-" + 
+                              String(now.getMinutes()).padStart(2, '0') + "-" + 
+                              String(now.getSeconds()).padStart(2, '0');
+                
+                const link = document.createElement('a');
+                link.href = "data:image/png;base64," + base64;
+                link.download = (studentName || "ogrenci") + "_" + dateStr + "_" + timeStr + ".png";
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        }
+
+        // --- SOHBETİ İNDİRME (İçerikte Tarih Saat Dakika Saniye) ---
+        function downloadChat() {
+            if (chatHistory.length === 0) { alert("Sohbet boş."); return; }
+            
+            let content = "ÖĞRENCİ: " + (studentName || "Belirsiz") + "\n";
+            content += "KAYIT TARİHİ: " + new Date().toLocaleString() + "\n";
+            content += "==================================================\n\n";
+
+            chatHistory.forEach(item => {
+                let timeStampStr = "";
+                if(item.timestamp) {
+                    const d = new Date(item.timestamp);
+                    timeStampStr = "[" + 
+                        String(d.getHours()).padStart(2, '0') + ":" + 
+                        String(d.getMinutes()).padStart(2, '0') + ":" + 
+                        String(d.getSeconds()).padStart(2, '0') + "] ";
+                }
+
+                let role = item.role === "user" ? (studentName || "Öğrenci").toUpperCase() : "ÖĞRETMEN YARDIMCISI";
+                let text = item.content;
+                
+                try {
+                    if (item.role === "assistant") {
+                        const j = JSON.parse(item.content);
+                        text = j.message;
+                        if(j.commands && j.commands.length) text += " [KOMUTLAR: " + j.commands.join(", ") + "]";
+                    }
+                } catch (e) {}
+                
+                content += timeStampStr + role + ":\n" + text + "\n--------------------------------------------------\n";
+            });
+            
+            const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            
+            // Dosya adı zaman damgalı
+            const now = new Date();
+            const fileNameTime = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+            
+            a.download = (studentName || "ogrenci") + "_sohbet_" + fileNameTime + ".txt";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function addMessage(text, sender) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message-wrapper ' + (sender === 'user' ? 'user' : 'ai');
+            
+            const name = document.createElement('div');
+            name.className = 'sender-name';
+            name.textContent = sender === 'user' ? (studentName || "Öğrenci") : (sender === 'error' ? "Sistem" : "Öğretmen Yardımcısı");
+            
+            const msg = document.createElement('div');
+            msg.className = 'message ' + (sender === 'user' ? 'user-message' : (sender === 'error' ? 'error-message' : 'ai-message'));
+            msg.textContent = text;
+            
+            if (sender !== 'error') wrapper.appendChild(name);
+            wrapper.appendChild(msg);
+            messagesDiv.appendChild(wrapper);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function handleKeyPress(event) { if (event.key === 'Enter') sendMessage(); }
+        window.onresize = function() { if(window.ggbApplet) window.ggbApplet.setSize(window.innerWidth - 350, window.innerHeight); };
+    </script>
+</body>
+</html>
