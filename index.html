@@ -10,7 +10,7 @@
         /* SOL PANEL: CHAT */
         #chat-panel { width: 350px; background: white; display: flex; flex-direction: column; border-right: 1px solid #ccc; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
         #chat-header { background: #2c3e50; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.1em; }
-        #chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #f9f9f9; }
+        #chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #f9f9f9; display: flex; flex-direction: column; gap: 10px; }
         #input-area { padding: 15px; border-top: 1px solid #ddd; display: flex; gap: 10px; background: white; }
         
         input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
@@ -18,21 +18,25 @@
         button:hover { background: #2ecc71; }
         button:disabled { background: #95a5a6; cursor: not-allowed; }
 
+        /* MESAJ GRUBU (İsim + Baloncuk) */
+        .message-wrapper { display: flex; flex-direction: column; max-width: 85%; }
+        .message-wrapper.user { align-self: flex-end; align-items: flex-end; }
+        .message-wrapper.ai { align-self: flex-start; align-items: flex-start; }
+
+        /* İSİM ETİKETLERİ */
+        .sender-name { font-size: 0.75em; color: #666; margin-bottom: 3px; font-weight: bold; }
+        .user .sender-name { margin-right: 5px; }
+        .ai .sender-name { margin-left: 5px; }
+
         /* MESAJ BALONLARI */
-        .message { margin-bottom: 10px; padding: 10px 15px; border-radius: 15px; max-width: 85%; font-size: 0.95em; line-height: 1.4; word-wrap: break-word; }
-        .user-message { background: #3498db; color: white; align-self: flex-end; margin-left: auto; border-bottom-right-radius: 2px; }
-        .ai-message { background: #eecda3; color: #333; align-self: flex-start; border-bottom-left-radius: 2px; border: 1px solid #ddd; }
+        .message { padding: 10px 15px; border-radius: 15px; font-size: 0.95em; line-height: 1.4; word-wrap: break-word; }
+        .user-message { background: #3498db; color: white; border-bottom-right-radius: 2px; }
+        .ai-message { background: #eecda3; color: #333; border-bottom-left-radius: 2px; border: 1px solid #ddd; }
         
-        /* HATA MESAJI STİLİ */
+        /* HATA MESAJI */
         .error-message { 
-            background: #ffdddd; 
-            color: #d8000c; 
-            border: 1px solid #d8000c; 
-            align-self: center; 
-            width: 90%; 
-            text-align: center; 
-            font-weight: bold; 
-            margin: 10px auto;
+            background: #ffdddd; color: #d8000c; border: 1px solid #d8000c; 
+            align-self: center; width: 90%; text-align: center; font-weight: bold; padding: 10px; border-radius: 10px;
         }
 
         /* SAĞ PANEL: GEOGEBRA */
@@ -45,7 +49,10 @@
     <div id="chat-panel">
         <div id="chat-header">Fonksiyon Dönüşümleri Laboratuvarı</div>
         <div id="chat-messages">
-            <div class="message ai-message">Merhaba! Ben Matematik Asistanın. İsmin nedir?</div>
+            <div class="message-wrapper ai">
+                <div class="sender-name">Öğretmen Yardımcısı</div>
+                <div class="message ai-message">Merhaba! Ben Öğretmen Yardımcınım. İsmin nedir?</div>
+            </div>
         </div>
         <div id="input-area">
             <input type="text" id="user-input" placeholder="Buraya yazın..." onkeypress="handleKeyPress(event)">
@@ -59,15 +66,9 @@
         // --- 1. GEOGEBRA KURULUMU ---
         var ggbApp = new GGBApplet({
             "appName": "graphing",
-            "width": 800,
-            "height": 600,
-            "showToolBar": false,
-            "showAlgebraInput": false,
-            "showMenuBar": false,
-            "showResetIcon": true,
-            "language": "tr",
-            "showGrid": true,
-            "showAxes": true,
+            "width": 800, "height": 600,
+            "showToolBar": false, "showAlgebraInput": false, "showMenuBar": false, "showResetIcon": true,
+            "language": "tr", "showGrid": true, "showAxes": true,
             "appletOnLoad": function(api) {
                 api.setGridVisible(true);
                 api.setAxesVisible(true, true);
@@ -75,13 +76,14 @@
             }
         }, true);
         
-        window.onload = function() {
-            ggbApp.inject('ggb-container');
-        };
+        window.onload = function() { ggbApp.inject('ggb-container'); };
 
+        // --- 2. DEĞİŞKENLER ---
         let chatHistory = [];
+        let studentName = ""; // Öğrenci ismini burada tutacağız
+        let isNameSet = false; // İsim belirlendi mi kontrolü
 
-        // --- 2. MESAJ GÖNDERME FONKSİYONU ---
+        // --- 3. MESAJ GÖNDERME FONKSİYONU ---
         async function sendMessage() {
             const inputField = document.getElementById('user-input');
             const message = inputField.value.trim();
@@ -89,15 +91,21 @@
 
             if (!message) return;
 
+            // --- İSİM BELİRLEME MANTIĞI ---
+            // Eğer isim henüz belirlenmediyse, girilen ilk mesajı isim olarak kabul et
+            if (!isNameSet) {
+                studentName = message; // İlk mesajı isim yap (Örn: "Ali")
+                isNameSet = true;
+            }
+
+            // Mesajı ekrana ekle (Artık studentName dolu olduğu için isim görünecek)
             addMessage(message, 'user');
             
             inputField.value = '';
             sendBtn.disabled = true;
-
             chatHistory.push({ role: "user", content: message });
 
             try {
-                // GÜNCELLENEN KISIM: Relative path kullanıldı
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -105,7 +113,6 @@
                 });
 
                 if (!response.ok) throw new Error('Sunucu bağlantı hatası');
-
                 const data = await response.json();
 
                 if (data.message) {
@@ -118,18 +125,17 @@
                 }
 
             } catch (error) {
-                console.error("Hata Detayı:", error);
-                addMessage("⚠️ HATA: Sunucuya bağlanılamadı. Sayfayı yenileyip tekrar deneyin.", 'error');
+                console.error("Hata:", error);
+                addMessage("⚠️ HATA: Sunucuya bağlanılamadı.", 'error');
             } finally {
                 sendBtn.disabled = false;
                 inputField.focus();
             }
         }
 
-        // --- 3. GEOGEBRA KOMUTLARINI UYGULAMA ---
+        // --- 4. GEOGEBRA KOMUTLARI ---
         function processCommands(commands) {
             if (!window.ggbAPI) return;
-
             commands.forEach(cmd => {
                 try {
                     if (cmd === "CLEAR_SCREEN") {
@@ -139,29 +145,47 @@
                     } else {
                         window.ggbAPI.evalCommand(cmd);
                     }
-                } catch (ggbError) {
-                    console.warn("GeoGebra komut hatası (Yoksayıldı):", cmd, ggbError);
-                }
+                } catch (e) { console.warn("GeoGebra Hatası:", cmd); }
             });
         }
 
-        // --- 4. ARAYÜZ YARDIMCISI ---
+        // --- 5. ARAYÜZ YARDIMCISI (İSİM ETİKETLERİ EKLENDİ) ---
         function addMessage(text, sender) {
             const messagesDiv = document.getElementById('chat-messages');
+            
+            // Ana kapsayıcı (Wrapper) oluştur
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.classList.add('message-wrapper');
+            
+            // İsim Etiketi Oluştur
+            const nameDiv = document.createElement('div');
+            nameDiv.classList.add('sender-name');
+            
+            // Mesaj Balonu Oluştur
             const msgDiv = document.createElement('div');
-            
             msgDiv.classList.add('message');
-            
+
             if (sender === 'user') {
+                wrapperDiv.classList.add('user');
                 msgDiv.classList.add('user-message');
+                // Eğer isim belirlendiyse o ismi kullan, yoksa 'Öğrenci' yaz
+                nameDiv.textContent = studentName || "Öğrenci"; 
             } else if (sender === 'error') {
                 msgDiv.classList.add('error-message');
+                nameDiv.textContent = "Sistem";
             } else {
+                wrapperDiv.classList.add('ai');
                 msgDiv.classList.add('ai-message');
+                nameDiv.textContent = "Öğretmen Yardımcısı";
             }
             
             msgDiv.textContent = text;
-            messagesDiv.appendChild(msgDiv);
+            
+            // Önce ismi, sonra mesajı ekle (Hata mesajı değilse)
+            if (sender !== 'error') wrapperDiv.appendChild(nameDiv);
+            wrapperDiv.appendChild(msgDiv);
+            
+            messagesDiv.appendChild(wrapperDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
