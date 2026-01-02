@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fonksiyon Dönüşümleri Laboratuvarı</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; background-color: #f0f2f5; }
+        
+        /* SOL PANEL: CHAT */
+        #chat-panel { width: 350px; background: white; display: flex; flex-direction: column; border-right: 1px solid #ccc; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
+        #chat-header { background: #2c3e50; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.1em; }
+        #chat-messages { flex: 1; padding: 15px; overflow-y: auto; background: #f9f9f9; }
+        #input-area { padding: 15px; border-top: 1px solid #ddd; display: flex; gap: 10px; background: white; }
+        
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
+        button { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; transition: background 0.3s; }
+        button:hover { background: #2ecc71; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+
+        /* MESAJ BALONLARI */
+        .message { margin-bottom: 10px; padding: 10px 15px; border-radius: 15px; max-width: 85%; font-size: 0.95em; line-height: 1.4; word-wrap: break-word; }
+        .user-message { background: #3498db; color: white; align-self: flex-end; margin-left: auto; border-bottom-right-radius: 2px; }
+        .ai-message { background: #eecda3; color: #333; align-self: flex-start; border-bottom-left-radius: 2px; border: 1px solid #ddd; }
+        
+        /* HATA MESAJI STİLİ */
+        .error-message { 
+            background: #ffdddd; 
+            color: #d8000c; 
+            border: 1px solid #d8000c; 
+            align-self: center; 
+            width: 90%; 
+            text-align: center; 
+            font-weight: bold; 
+            margin: 10px auto;
+        }
+
+        /* SAĞ PANEL: GEOGEBRA */
+        #ggb-container { flex: 1; position: relative; }
+    </style>
+    <script src="https://cdn.geogebra.org/apps/deployggb.js"></script>
+</head>
+<body>
+
+    <div id="chat-panel">
+        <div id="chat-header">Fonksiyon Dönüşümleri Laboratuvarı</div>
+        <div id="chat-messages">
+            <div class="message ai-message">Merhaba! Ben Matematik Asistanın. İsmin nedir?</div>
+        </div>
+        <div id="input-area">
+            <input type="text" id="user-input" placeholder="Buraya yazın..." onkeypress="handleKeyPress(event)">
+            <button id="send-btn" onclick="sendMessage()">Gönder</button>
+        </div>
+    </div>
+
+    <div id="ggb-container"></div>
+
+    <script>
+        // --- 1. GEOGEBRA KURULUMU ---
+        var ggbApp = new GGBApplet({
+            "appName": "graphing",
+            "width": 800,
+            "height": 600,
+            "showToolBar": false,
+            "showAlgebraInput": false,
+            "showMenuBar": false,
+            "showResetIcon": true,
+            "language": "tr",
+            "showGrid": true,
+            "showAxes": true,
+            "appletOnLoad": function(api) {
+                api.setGridVisible(true);
+                api.setAxesVisible(true, true);
+                window.ggbAPI = api;
+            }
+        }, true);
+        
+        window.onload = function() {
+            ggbApp.inject('ggb-container');
+        };
+
+        let chatHistory = [];
+
+        // --- 2. MESAJ GÖNDERME FONKSİYONU ---
+        async function sendMessage() {
+            const inputField = document.getElementById('user-input');
+            const message = inputField.value.trim();
+            const sendBtn = document.getElementById('send-btn');
+
+            if (!message) return;
+
+            addMessage(message, 'user');
+            
+            inputField.value = '';
+            sendBtn.disabled = true;
+
+            chatHistory.push({ role: "user", content: message });
+
+            try {
+                // GÜNCELLENEN KISIM: Relative path kullanıldı
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, history: chatHistory })
+                });
+
+                if (!response.ok) throw new Error('Sunucu bağlantı hatası');
+
+                const data = await response.json();
+
+                if (data.message) {
+                    addMessage(data.message, 'ai');
+                    chatHistory.push({ role: "assistant", content: JSON.stringify(data) });
+                }
+
+                if (data.commands && Array.isArray(data.commands)) {
+                    processCommands(data.commands);
+                }
+
+            } catch (error) {
+                console.error("Hata Detayı:", error);
+                addMessage("⚠️ HATA: Sunucuya bağlanılamadı. Sayfayı yenileyip tekrar deneyin.", 'error');
+            } finally {
+                sendBtn.disabled = false;
+                inputField.focus();
+            }
+        }
+
+        // --- 3. GEOGEBRA KOMUTLARINI UYGULAMA ---
+        function processCommands(commands) {
+            if (!window.ggbAPI) return;
+
+            commands.forEach(cmd => {
+                try {
+                    if (cmd === "CLEAR_SCREEN") {
+                        window.ggbAPI.reset();
+                        window.ggbAPI.setGridVisible(true);
+                        window.ggbAPI.setAxesVisible(true, true);
+                    } else {
+                        window.ggbAPI.evalCommand(cmd);
+                    }
+                } catch (ggbError) {
+                    console.warn("GeoGebra komut hatası (Yoksayıldı):", cmd, ggbError);
+                }
+            });
+        }
+
+        // --- 4. ARAYÜZ YARDIMCISI ---
+        function addMessage(text, sender) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const msgDiv = document.createElement('div');
+            
+            msgDiv.classList.add('message');
+            
+            if (sender === 'user') {
+                msgDiv.classList.add('user-message');
+            } else if (sender === 'error') {
+                msgDiv.classList.add('error-message');
+            } else {
+                msgDiv.classList.add('ai-message');
+            }
+            
+            msgDiv.textContent = text;
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') sendMessage();
+        }
+    </script>
+</body>
+</html>
