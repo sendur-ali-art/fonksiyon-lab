@@ -57,7 +57,7 @@ app.post('/api/chat', async (req, res) => {
         const messages = Array.isArray(history) ? history : [];
 
         const response = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "gpt-4o-mini",
             messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
             temperature: 0.2,
             response_format: { type: "json_object" }
@@ -75,4 +75,5 @@ app.post('/api/chat', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Sunucu ${PORT} portunda aktif.`);
+
 });
