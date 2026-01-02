@@ -7,17 +7,16 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; background-color: #f0f2f5; overflow: hidden; }
         
-        /* SOL PANEL: CHAT (Sabit Genişlik) */
+        /* SOL PANEL: CHAT */
         #chat-panel { width: 350px; background: white; display: flex; flex-direction: column; border-right: 1px solid #ccc; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 10; }
         
-        /* HEADER (Başlık ve Buton) */
+        /* HEADER */
         #chat-header { 
             background: #2c3e50; color: white; padding: 15px; 
             text-align: center; font-weight: bold; font-size: 1.1em; 
             display: flex; justify-content: space-between; align-items: center;
         }
         
-        /* Kaydet Butonu Stili */
         .save-btn {
             background-color: #e74c3c; color: white; border: none; 
             padding: 5px 10px; border-radius: 5px; cursor: pointer; 
@@ -62,8 +61,7 @@
             <span>Fonksiyon Lab</span>
             <button onclick="downloadChat()" class="save-btn" title="Sohbeti bilgisayara indir">💾 Sohbeti Kaydet</button>
         </div>
-        <div id="chat-messages">
-            </div>
+        <div id="chat-messages"></div>
         <div id="input-area">
             <input type="text" id="user-input" placeholder="Sistem başlatılıyor..." disabled onkeypress="handleKeyPress(event)">
             <button id="send-btn" disabled onclick="sendMessage()">Gönder</button>
@@ -78,13 +76,8 @@
             "appName": "graphing",
             "width": window.innerWidth - 350, 
             "height": window.innerHeight,     
-            "showToolBar": false,
-            "showAlgebraInput": false,
-            "showMenuBar": false,
-            "showResetIcon": true,
-            "language": "tr",
-            "showGrid": true,
-            "showAxes": true,
+            "showToolBar": false, "showAlgebraInput": false, "showMenuBar": false, "showResetIcon": true,
+            "language": "tr", "showGrid": true, "showAxes": true,
             "appletOnLoad": function(api) {
                 api.setGridVisible(true);
                 api.setAxesVisible(true, true);
@@ -125,7 +118,7 @@
             }, 2000);
         }
 
-        // --- 4. MESAJLAŞMA ---
+        // --- 4. MESAJLAŞMA (ZAMAN DAMGASI EKLENDİ) ---
         async function sendMessage() {
             const inputField = document.getElementById('user-input');
             const message = inputField.value.trim();
@@ -142,13 +135,19 @@
             
             inputField.value = '';
             sendBtn.disabled = true;
-            chatHistory.push({ role: "user", content: message });
+
+            // ZAMAN DAMGASI KAYDEDİLİYOR
+            chatHistory.push({ 
+                role: "user", 
+                content: message,
+                timestamp: new Date() // <-- BURASI YENİ
+            });
 
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message, history: chatHistory })
+                    body: JSON.stringify({ message: message, history: chatHistory.map(h => ({role: h.role, content: h.content})) }) // Sadece gerekli veriyi gönder
                 });
 
                 if (!response.ok) throw new Error('Sunucu hatası');
@@ -156,7 +155,12 @@
 
                 if (data.message) {
                     addMessage(data.message, 'ai');
-                    chatHistory.push({ role: "assistant", content: JSON.stringify(data) });
+                    // ZAMAN DAMGASI KAYDEDİLİYOR
+                    chatHistory.push({ 
+                        role: "assistant", 
+                        content: JSON.stringify(data),
+                        timestamp: new Date() // <-- BURASI YENİ
+                    });
                 }
 
                 if (data.commands && Array.isArray(data.commands)) {
@@ -172,7 +176,7 @@
             }
         }
 
-        // --- 5. GEOGEBRA İŞLEMLERİ ---
+        // --- 5. GEOGEBRA İŞLEMLERİ (SCREENSHOT + SAATLI DOSYA ADI) ---
         function processCommands(commands) {
             if (!window.ggbAPI) return;
             commands.forEach(cmd => {
@@ -181,6 +185,22 @@
                         window.ggbAPI.reset();
                         window.ggbAPI.setGridVisible(true);
                         window.ggbAPI.setAxesVisible(true, true);
+                    
+                    } else if (cmd === "SCREENSHOT") {
+                        window.ggbAPI.getPNGBase64(1, (base64) => {
+                            const now = new Date();
+                            const timeStr = String(now.getHours()).padStart(2, '0') + "-" + 
+                                          String(now.getMinutes()).padStart(2, '0') + "-" + 
+                                          String(now.getSeconds()).padStart(2, '0');
+                            
+                            const link = document.createElement('a');
+                            link.href = "data:image/png;base64," + base64;
+                            link.download = (studentName || "ogrenci") + "_grafik_" + timeStr + ".png";
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        });
+
                     } else {
                         window.ggbAPI.evalCommand(cmd);
                     }
@@ -191,13 +211,10 @@
         // --- 6. ARAYÜZ YARDIMCISI ---
         function addMessage(text, sender) {
             const messagesDiv = document.getElementById('chat-messages');
-            
             const wrapperDiv = document.createElement('div');
             wrapperDiv.classList.add('message-wrapper');
-            
             const nameDiv = document.createElement('div');
             nameDiv.classList.add('sender-name');
-            
             const msgDiv = document.createElement('div');
             msgDiv.classList.add('message');
 
@@ -215,10 +232,8 @@
             }
             
             msgDiv.textContent = text;
-            
             if (sender !== 'error') wrapperDiv.appendChild(nameDiv);
             wrapperDiv.appendChild(msgDiv);
-            
             messagesDiv.appendChild(wrapperDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
@@ -227,50 +242,58 @@
             if (event.key === 'Enter') sendMessage();
         }
 
-        // Pencere boyutu değişirse GeoGebra'yı güncelle
         window.onresize = function() {
             if(window.ggbApplet) {
                 window.ggbApplet.setSize(window.innerWidth - 350, window.innerHeight);
             }
         };
 
-        // --- 7. SOHBETİ BİLGİSAYARA İNDİRME FONKSİYONU (YENİ) ---
+        // --- 7. SOHBETİ İNDİRME (SAAT/DAKİKA/SANİYE DETAYLI) ---
         function downloadChat() {
             if (chatHistory.length === 0) {
                 alert("Henüz kaydedilecek bir sohbet yok.");
                 return;
             }
 
-            // Dosya içeriğini oluştur
             let content = "ÖĞRENCİ: " + (studentName || "Belirsiz") + "\n";
             content += "TARİH: " + new Date().toLocaleString() + "\n";
             content += "========================================\n\n";
 
             chatHistory.forEach(item => {
+                // Zaman damgasını formatla: [14:30:05]
+                let timeStr = "";
+                if (item.timestamp) {
+                    const d = new Date(item.timestamp);
+                    timeStr = "[" + 
+                              String(d.getHours()).padStart(2, '0') + ":" + 
+                              String(d.getMinutes()).padStart(2, '0') + ":" + 
+                              String(d.getSeconds()).padStart(2, '0') + "] ";
+                }
+
                 let role = item.role === "user" ? (studentName || "Öğrenci").toUpperCase() : "ÖĞRETMEN YARDIMCISI";
                 let text = item.content;
 
-                // Eğer mesaj asistandan geliyorsa JSON formatındadır, bunu temizleyelim
                 try {
                     if (item.role === "assistant") {
                         const jsonContent = JSON.parse(item.content);
                         text = jsonContent.message;
                         if(jsonContent.commands && jsonContent.commands.length > 0) {
-                            text += " [UYGULANAN KOMUTLAR: " + jsonContent.commands.join(", ") + "]";
+                            text += " [KOMUTLAR: " + jsonContent.commands.join(", ") + "]";
                         }
                     }
-                } catch (e) { /* JSON değilse aynen kalsın */ }
+                } catch (e) { }
                 
-                content += role + ":\n" + text + "\n";
+                // Format: [14:30:05] ALİ:
+                //         Mesaj içeriği...
+                content += timeStr + role + ":\n" + text + "\n";
                 content += "----------------------------------------\n";
             });
 
-            // Dosyayı oluştur ve indir
             const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = (studentName || "ogrenci") + "_ders_kaydi.txt";
+            a.download = (studentName || "ogrenci") + "_sohbet_kaydi.txt";
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
