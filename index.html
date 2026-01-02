@@ -146,7 +146,6 @@
             chatHistory.push({ role: "user", content: message, timestamp: new Date() });
 
             try {
-                // Sunucuya gönderirken timestamp'i filtrele
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -197,33 +196,44 @@
             }
         }
 
-        // --- TAM EKRAN FOTOĞRAF (İZİN İSTEYEN GÜVENLİ YÖNTEM) ---
+        // --- YARDIMCI: GÜZEL TARİH FORMATI ---
+        function getFormattedDate() {
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            const hour = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const sec = String(now.getSeconds()).padStart(2, '0');
+            // Format: 02.01.2026_14.30.00
+            return `${day}.${month}.${year}_${hour}.${min}.${sec}`;
+        }
+
+        // --- TAM EKRAN FOTOĞRAF (İZİN İSTEYEN YÖNTEM + DÜZGÜN İSİM) ---
         async function takeFullScreenshot() {
             try {
-                // 1. Kullanıcıdan ekranı paylaşmasını iste (Burası pencere açar)
+                // 1. Ekran Paylaşımı İste
                 const stream = await navigator.mediaDevices.getDisplayMedia({
                     preferCurrentTab: true 
                 });
 
-                // 2. Gizli bir video elemanı oluştur ve akışı oynat
+                // 2. Gizli Video Oynat
                 const video = document.createElement("video");
                 
                 video.onloadedmetadata = function () {
                     video.play();
                     
-                    // Video oturduğunda fotoğrafı çek (300ms bekleme)
                     setTimeout(() => {
                         const canvas = document.createElement("canvas");
                         canvas.width = video.videoWidth;
                         canvas.height = video.videoHeight;
                         const ctx = canvas.getContext("2d");
                         
-                        // Videoyu tuvale çiz
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                         
-                        // 3. Dosya İsmi
-                        const now = new Date();
-                        const fileName = (studentName || "ogrenci") + "_TAMEKRAN_" + now.getTime() + ".png";
+                        // 3. Dosya İsmi (DÜZELTİLEN KISIM)
+                        const name = studentName || "ogrenci";
+                        const fileName = name + "_TAMEKRAN_" + getFormattedDate() + ".png";
 
                         // 4. İndir
                         const link = document.createElement('a');
@@ -233,7 +243,7 @@
                         link.click();
                         document.body.removeChild(link);
 
-                        // 5. Paylaşımı Durdur (Kamera simgesi gitsin)
+                        // 5. Durdur
                         stream.getTracks().forEach(track => track.stop());
                         
                     }, 300); 
@@ -242,11 +252,11 @@
                 video.srcObject = stream;
 
             } catch (err) {
-                console.error("Ekran görüntüsü iptal edildi:", err);
+                console.error("İptal edildi:", err);
             }
         }
 
-        // --- SOHBET İNDİRME ---
+        // --- SOHBET İNDİRME (DÜZGÜN İSİM) ---
         function downloadChat() {
             if (chatHistory.length === 0) { alert("Sohbet boş."); return; }
             
@@ -275,7 +285,11 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = (studentName || "ogrenci") + "_sohbet.txt";
+
+            // Dosya İsmi (DÜZELTİLEN KISIM)
+            const name = studentName || "ogrenci";
+            a.download = name + "_SOHBET_" + getFormattedDate() + ".txt";
+
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
