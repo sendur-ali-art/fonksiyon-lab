@@ -63,12 +63,18 @@
     <div id="ggb-container"></div>
 
     <script>
-        // --- 1. GEOGEBRA KURULUMU ---
+// --- 1. GEOGEBRA KURULUMU ---
         var ggbApp = new GGBApplet({
             "appName": "graphing",
-            "width": 800, "height": 600,
-            "showToolBar": false, "showAlgebraInput": false, "showMenuBar": false, "showResetIcon": true,
-            "language": "tr", "showGrid": true, "showAxes": true,
+            "width": window.innerWidth - 350, // Genişlik: Ekran genişliği - Sol panel (350px)
+            "height": window.innerHeight,     // Yükseklik: Ekranın tamamı
+            "showToolBar": false,
+            "showAlgebraInput": false,
+            "showMenuBar": false,
+            "showResetIcon": true,
+            "language": "tr",
+            "showGrid": true,
+            "showAxes": true,
             "appletOnLoad": function(api) {
                 api.setGridVisible(true);
                 api.setAxesVisible(true, true);
@@ -195,3 +201,4 @@
     </script>
 </body>
 </html>
+
